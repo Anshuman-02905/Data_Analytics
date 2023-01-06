@@ -1,6 +1,6 @@
 
 
-# Employee Performance and Demand Demographics DASHBOARD
+#Employee Performance and Demand Demographics DASHBOARD
 
 We are given a sales dataset.In this dataset we have detailed information of sales. It contains time,location,Client company,Employee who closed that deal and quatit ,price,revenue of each sale. Data between 1st January 2018 and 16th October 2019 is recoreded.2000 data points are recorded.My project is to do  **Emplohyee Sales Performance Analysis and Regional And Timeline Sales Analysis**.
 
