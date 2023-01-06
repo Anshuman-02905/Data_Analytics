@@ -6,6 +6,8 @@ We are given a sales dataset.In this dataset we have detailed information of sal
 
 Our sample dataetis
 Enter Sample image
+![Sample Dataset](https://user-images.githubusercontent.com/52020282/210939161-4b200170-8373-4f15-94a8-0d7ad02a27c9.png)
+
 
 -----------------------------------------------------
 -------------------
