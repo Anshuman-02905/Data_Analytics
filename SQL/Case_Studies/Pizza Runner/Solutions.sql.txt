@@ -1,0 +1,248 @@
+-- A. Pizza Metrics
+
+-- 1. How many pizzas were ordered?
+SELECT COUNT(*) AS total_pizzas_ordered
+FROM customer_orders;
+
+-- 2. How many unique customer orders were made?
+SELECT COUNT(DISTINCT order_id) AS unique_customer_orders
+FROM customer_orders;
+
+-- 3. How many successful orders were delivered by each runner?
+SELECT runner_id, COUNT(order_id) AS successful_deliveries
+FROM runner_orders
+WHERE status = 'Delivered'
+GROUP BY runner_id;
+
+-- 4. How many of each type of pizza was delivered?
+SELECT pizza_id, COUNT(order_id) AS pizza_deliveries
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id
+WHERE status = 'Delivered'
+GROUP BY pizza_id;
+
+-- 5. How many Vegetarian and Meatlovers pizzas were ordered by each customer?
+SELECT customer_id,
+       SUM(CASE WHEN pizza_type = 'Vegetarian' THEN 1 ELSE 0 END) AS vegetarian_orders,
+       SUM(CASE WHEN pizza_type = 'Meatlovers' THEN 1 ELSE 0 END) AS meatlovers_orders
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id
+GROUP BY customer_id;
+
+-- 6. What was the maximum number of pizzas delivered in a single order?
+SELECT MAX(pizza_count) AS max_pizzas_in_order
+FROM (
+  SELECT order_id, COUNT(pizza_id) AS pizza_count
+  FROM order_items
+  WHERE status = 'Delivered'
+  GROUP BY order_id
+) AS subquery;
+
+-- 7. For each customer, how many delivered pizzas had at least 1 change and how many had no changes?
+SELECT customer_id,
+       SUM(CASE WHEN exclusions IS NOT NULL OR extras IS NOT NULL THEN 1 ELSE 0 END) AS pizzas_with_changes,
+       SUM(CASE WHEN exclusions IS NULL AND extras IS NULL THEN 1 ELSE 0 END) AS pizzas_without_changes
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id
+WHERE status = 'Delivered'
+GROUP BY customer_id;
+
+-- 8. How many pizzas were delivered that had both exclusions and extras?
+SELECT COUNT(order_id) AS pizzas_with_exclusions_and_extras
+FROM order_items
+WHERE exclusions IS NOT NULL AND extras IS NOT NULL;
+
+-- 9. What was the total volume of pizzas ordered for each hour of the day?
+SELECT EXTRACT(HOUR FROM order_time) AS order_hour, COUNT(order_id) AS pizzas_ordered
+FROM customer_orders
+GROUP BY EXTRACT(HOUR FROM order_time)
+ORDER BY order_hour;
+
+-- 10. What was the volume of orders for each day of the week?
+SELECT EXTRACT(DOW FROM order_time) AS order_day, COUNT(order_id) AS orders_volume
+FROM customer_orders
+GROUP BY EXTRACT(DOW FROM order_time)
+ORDER BY order_day;
+
+-- B. Runner and Customer Experience
+
+-- 1. How many runners signed up for each 1-week period?
+SELECT DATE_TRUNC('week', sign_up_date) AS week_start, COUNT(runner_id) AS runners_signed_up
+FROM runners
+GROUP BY week_start
+ORDER BY week_start;
+
+-- 2. What was the average time in minutes it took for each runner to arrive at the Pizza Runner HQ to pick up the order?
+SELECT runner_id,
+       AVG(EXTRACT(EPOCH FROM (pickup_time - order_time)) / 60) AS avg_pickup_time_minutes
+FROM runner_orders
+JOIN customer_orders ON runner_orders.order_id = customer_orders.order_id
+GROUP BY runner_id;
+
+-- 3. Is there any relationship between the number of pizzas and how long the order takes to prepare?
+SELECT COUNT(pizza_id) AS number_of_pizzas,
+       AVG(EXTRACT(EPOCH FROM (pickup_time - order_time)) / 60) AS avg_preparation_time_minutes
+FROM order_items
+JOIN runner_orders ON order_items.order_id = runner_orders.order_id
+GROUP BY order_id;
+
+-- 4. What was the average distance traveled for each customer?
+SELECT customer_id, AVG(distance_km) AS avg_distance_km
+FROM delivery_orders
+GROUP BY customer_id;
+
+-- 5. What was the difference between the longest and shortest delivery times for all orders?
+SELECT MAX(duration_mins) - MIN(duration_mins) AS delivery_time_range
+FROM delivery_orders;
+
+-- 6. What was the average speed for each runner for each delivery and do you notice any trend for these values?
+SELECT runner_id,
+       AVG(distance_km / (duration_mins / 60)) AS avg_speed_kph
+FROM delivery_orders
+GROUP BY runner_id;
+
+-- 7. What is the successful delivery percentage for each runner?
+SELECT runner_id,
+       (SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) * 100.0 / COUNT(order_id)) AS successful_delivery_percentage
+FROM runner_orders
+GROUP BY runner_id;
+
+-- C. Ingredient Optimization
+
+-- 1. What are the standard ingredients for each pizza?
+SELECT pizza_id, GROUP_CONCAT(ingredient ORDER BY ingredient) AS standard_ingredients
+FROM pizza_ingredients
+GROUP BY pizza_id;
+
+-- 2. What was the most commonly added extra?
+SELECT ingredient, COUNT(*) AS count
+FROM pizza_extras
+GROUP BY ingredient
+ORDER BY count DESC
+LIMIT 1;
+
+-- 3. What was the most common exclusion?
+SELECT ingredient, COUNT(*) AS count
+FROM pizza_exclusions
+GROUP BY ingredient
+ORDER BY count DESC
+LIMIT 1;
+
+-- 4. Generate an order item for each record in the customer_orders table
+SELECT order_id,
+       CONCAT(pizza_type,
+              CASE
+                WHEN exclusions IS NOT NULL THEN CONCAT(' - Exclude ', exclusions)
+                ELSE ''
+              END,
+              CASE
+                WHEN extras IS NOT NULL THEN CONCAT(' - Extra ', extras)
+                ELSE ''
+              END) AS order_item
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id;
+
+-- 5. Generate an alphabetically ordered comma-separated ingredient list for each pizza order
+SELECT order_id,
+       CONCAT(pizza_type, ': ',
+              GROUP_CONCAT(DISTINCT CASE WHEN extra_ingredient IS NOT NULL THEN CONCAT('2x', extra_ingredient) ELSE NULL END ORDER BY extra_ingredient ASC)
+              ) AS ingredient_list
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id
+GROUP BY order_id, pizza_type;
+
+-- 6. What is the total quantity of each ingredient used in all delivered pizzas sorted by most frequent first?
+SELECT ingredient, SUM(quantity) AS total_quantity
+FROM pizza_ingredients
+JOIN order_items ON pizza_ingredients.pizza_id = order_items.pizza_id
+WHERE status = 'Delivered'
+GROUP BY ingredient
+ORDER BY total_quantity DESC;
+
+-- D. Pricing and Ratings
+
+-- 1. Revenue calculation
+SELECT SUM(CASE WHEN pizza_type = 'Meat Lovers' THEN 12
+                 WHEN pizza_type = 'Vegetarian' THEN 10
+                 ELSE 0 END) AS total_revenue
+FROM customer_orders
+JOIN order_items ON customer_orders.order_id = order_items.order_id
+WHERE status = 'Delivered';
+
+-- 2. Additional charge for extras
+SELECT SUM(CASE WHEN extras IS NOT NULL THEN 1 ELSE 0 END) * 1 AS extra_charge_revenue
+FROM order_items
+WHERE status = 'Delivered';
+
+-- 3. Cheese extra charge
+SELECT SUM(CASE WHEN extras LIKE '%Cheese%' THEN 1 ELSE 0 END) * 1 AS cheese_extra_charge
+FROM order_items
+WHERE status = 'Delivered';
+
+-- 4. Design a new ratings table schema
+CREATE TABLE runner_ratings (
+    rating_id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT,
+    customer_id INT,
+    runner_id INT,
+    rating INT CHECK (rating BETWEEN 1 AND 5),
+    FOREIGN KEY (order_id) REFERENCES customer_orders(order_id),
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+    FOREIGN KEY (runner_id) REFERENCES runners(runner_id)
+);
+
+-- Insert sample rating data
+INSERT INTO runner_ratings (order_id, customer_id, runner_id, rating) VALUES
+(1, 101, 201, 4),
+(2, 102, 202, 5),
+(3, 103, 203, 3);
+
+-- 5. Join all information to form a table with delivery details and ratings
+SELECT co.customer_id,
+       co.order_id,
+       ro.runner_id,
+       rr.rating,
+       co.order_time,
+       ro.pickup_time,
+       EXTRACT(EPOCH FROM (ro.pickup_time - co.order_time)) / 60 AS time_between_order_and_pickup,
+       EXTRACT(EPOCH FROM (ro.delivery_time - ro.pickup_time)) / 60 AS delivery_duration,
+       (distance_km / (EXTRACT(EPOCH FROM (ro.delivery_time - ro.pickup_time)) / 3600)) AS avg_speed,
+       COUNT(oi.pizza_id) AS total_pizzas
+FROM customer_orders co
+JOIN runner_orders ro ON co.order_id = ro.order_id
+JOIN runner_ratings rr ON co.order_id = rr.order_id
+JOIN order_items oi ON co.order_id = oi.order_id
+WHERE ro.status = 'Delivered'
+GROUP BY co.customer_id, co.order_id, ro.runner_id, rr.rating, co.order_time, ro.pickup_time, ro.delivery_time, distance_km;
+
+-- 6. Calculate remaining money
+WITH revenue AS (
+    SELECT SUM(CASE WHEN pizza_type = 'Meat Lovers' THEN 12
+                     WHEN pizza_type = 'Vegetarian' THEN 10
+                     ELSE 0 END) AS total_revenue
+    FROM customer_orders
+    JOIN order_items ON customer_orders.order_id = order_items.order_id
+    WHERE status = 'Delivered'
+),
+extra_revenue AS (
+    SELECT SUM(CASE WHEN extras IS NOT NULL THEN 1 ELSE 0 END) * 1 AS extra_charge_revenue
+    FROM order_items
+    WHERE status = 'Delivered'
+),
+cheese_extra_revenue AS (
+    SELECT SUM(CASE WHEN extras LIKE '%Cheese%' THEN 1 ELSE 0 END) * 1 AS cheese_extra_charge
+    FROM order_items
+    WHERE status = 'Delivered'
+),
+runner_costs AS (
+    SELECT SUM(distance_km * 0.30) AS total_runner_cost
+    FROM delivery_orders
+)
+SELECT (r.total_revenue + e.extra_charge_revenue + c.cheese_extra_charge - rc.total_runner_cost) AS money_left_over
+FROM revenue r, extra_revenue e, cheese_extra_revenue c, runner_costs rc;
+
+-- E. Bonus Questions
+
+-- 1. Insert a new Supreme pizza with all toppings
+INSERT INTO pizzas (pizza_id, pizza_name, standard_ingredients) VALUES
+(1001, 'Supreme', 'Cheese, Pepperoni, Sausage, Mushrooms, Onions, Bell Peppers, Olives, Tomatoes');
