@@ -1,2 +1,0 @@
-ipython==8.10.0
-pandas==1.5.2
